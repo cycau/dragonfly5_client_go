@@ -1,4 +1,4 @@
-module dragonfly5/test
+module dragonfly5/runtest
 
 go 1.24.0
 
