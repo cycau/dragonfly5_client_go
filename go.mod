@@ -1,4 +1,4 @@
-module dragonfly5
+module github.com/cycau/dragonfly5_client_go
 
 go 1.24.0
 
