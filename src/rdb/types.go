@@ -1,0 +1,121 @@
+// Copyright 2025 kg.sai. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package smartclient
+
+import (
+	"fmt"
+	"time"
+)
+
+type NodeEntry struct {
+	BaseURL   string `yaml:"baseUrl"`
+	SecretKey string `yaml:"secretKey"`
+}
+
+type ValueType string
+
+const (
+	ValueType_NULL     ValueType = "NULL"
+	ValueType_INT      ValueType = "INT"
+	ValueType_LONG     ValueType = "LONG"
+	ValueType_DOUBLE   ValueType = "DOUBLE"
+	ValueType_DECIMAL  ValueType = "DECIMAL"
+	ValueType_BOOL     ValueType = "BOOL"
+	ValueType_DATE     ValueType = "DATE"
+	ValueType_DATETIME ValueType = "DATETIME"
+	ValueType_STRING   ValueType = "STRING"
+	ValueType_BINARY   ValueType = "BINARY"
+)
+
+// ParamValue はクエリ/実行のパラメータ
+type paramValue struct {
+	Value any       `json:"value,omitempty"`
+	Type  ValueType `json:"type"`
+}
+
+// QueryOptions は Query のオプション
+type QueryOptions struct {
+	LimitRows  int // 最大行数
+	TimeoutSec int // タイムアウト秒
+}
+
+// ColumnMeta はカラムメタデータ
+type ColumnMeta struct {
+	Name     string `json:"name"`
+	DBType   string `json:"dbType"`
+	Nullable bool   `json:"nullable"`
+}
+
+// QueryResult は Query の結果
+type queryResult struct {
+	Meta          []ColumnMeta `json:"meta,omitempty"`
+	Rows          [][]any      `json:"rows"`
+	TotalCount    int          `json:"totalCount"`
+	ElapsedTimeUs int64        `json:"elapsedTimeUs"`
+}
+
+// ExecuteResult は Execute の結果
+type ExecuteResult struct {
+	EffectedRows  int64 `json:"effectedRows"`
+	ElapsedTimeUs int64 `json:"elapsedTimeUs"`
+}
+
+type TxInfo struct {
+	TxId      string    `json:"txId"`
+	NodeID    string    `json:"nodeId"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// IsolationLevel はトランザクション分離レベル
+type IsolationLevel string
+
+const (
+	Isolation_ReadUncommitted IsolationLevel = "READ_UNCOMMITTED"
+	Isolation_ReadCommitted   IsolationLevel = "READ_COMMITTED"
+	Isolation_RepeatableRead  IsolationLevel = "REPEATABLE_READ"
+	Isolation_Serializable    IsolationLevel = "SERIALIZABLE"
+)
+
+type Record struct {
+	colMap *map[string]int
+	data   *[]any
+}
+
+func (r *Record) Get(columnName string) any {
+	idx, ok := (*r.colMap)[columnName]
+	if !ok {
+		panic(fmt.Sprintf("Column name %s not exist", columnName))
+	}
+	return (*r.data)[idx]
+}
+
+type Records struct {
+	colMap        map[string]int
+	Meta          []ColumnMeta
+	Rows          []Record
+	TotalCount    int
+	ElapsedTimeUs int64
+}
+
+func (r *Records) Get(rowIndex int) *Record {
+	if rowIndex < 0 || rowIndex >= len(r.Rows) {
+		panic(fmt.Sprintf("Row index %d out of range", rowIndex))
+	}
+	return &r.Rows[rowIndex]
+}
+
+func (r *Records) Size() int {
+	return len(r.Rows)
+}
