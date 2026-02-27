@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -110,12 +111,8 @@ func (s *switcher) Request(ctx context.Context, dbName string, endpoint endpoint
 	node := &s.candidates[nodeIdx]
 
 	resp, err := s.requestHttp(ctx, nodeIdx, node.BaseURL, node.SecretKey, endpoint, method, headers, body, timoutSec, 2)
-	if resp == nil {
-		s.maxConcurrency.Release(1)
-		return nil, err
-	}
 	// OK response
-	if err == nil {
+	if resp != nil && resp.StatusCode == http.StatusOK {
 		httpRelease := resp.Release
 		resp.Release = func() {
 			httpRelease()
@@ -123,28 +120,28 @@ func (s *switcher) Request(ctx context.Context, dbName string, endpoint endpoint
 		}
 		return resp, nil
 	}
-
-	bodyBytes, _ := io.ReadAll(resp.Body) // 読み切る
-	resp.Body.Close()
 	s.maxConcurrency.Release(1)
 
-	// retry only when network error or connection timeout or capacity error
-	if !isRetryable(resp.StatusCode) {
-		return nil, fmt.Errorf("Request failed with status %d: %s. error: %v", resp.StatusCode, string(bodyBytes), err)
-	}
-
 	// 他のノードを探すために、ノードの状態を更新
-	node.Mu.Lock()
-	switch resp.StatusCode {
-	case http.StatusBadGateway:
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		node.Mu.Lock()
 		node.Status = "DRAINING"
-	case http.StatusGatewayTimeout:
+		node.CheckTime = time.Now()
+		node.Mu.Unlock()
+	} else if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
+		node.Mu.Lock()
 		node.Status = "DRAINING"
-	case http.StatusServiceUnavailable:
+		node.CheckTime = time.Now()
+		node.Mu.Unlock()
+	} else if resp != nil && resp.StatusCode == http.StatusRequestTimeout {
+		node.Mu.Lock()
 		node.Datasources[dsIdx].Active = false
+		node.CheckTime = time.Now()
+		node.Mu.Unlock()
+	} else {
+		return nil, err
 	}
-	node.CheckTime = time.Now()
-	node.Mu.Unlock()
 
 	retryCount--
 	if retryCount < 0 {
@@ -159,19 +156,15 @@ func (s *switcher) RequestTargetNode(ctx context.Context, nodeIdx int, endpoint 
 
 	node := &s.candidates[nodeIdx]
 	resp, err := s.requestHttp(ctx, nodeIdx, node.BaseURL, node.SecretKey, endpoint, method, headers, body, timoutSec, 0)
-	if resp == nil {
-		return nil, err
-	}
 	// OK response
-	if err == nil {
+	if resp != nil && resp.StatusCode == http.StatusOK {
 		return resp, nil
 	}
-	bodyBytes, _ := io.ReadAll(resp.Body) // 読み切る
-	resp.Body.Close()
 
-	// retry only when network error or connection timeout or capacity error
-	if !isRetryable(resp.StatusCode) {
-		return nil, fmt.Errorf("Request failed with status %d: %s. error: %v", resp.StatusCode, string(bodyBytes), err)
+	// retry only when network error
+	var netErr net.Error
+	if !errors.As(err, &netErr) {
+		return nil, err
 	}
 
 	retryCount--
@@ -189,18 +182,6 @@ func (s *switcher) RequestTargetNode(ctx context.Context, nodeIdx int, endpoint 
 	// retry
 	return s.RequestTargetNode(ctx, nodeIdx, endpoint, method, headers, body, timoutSec, retryCount)
 
-}
-func isRetryable(statusCode int) bool {
-	if statusCode == http.StatusBadGateway {
-		return true
-	}
-	if statusCode == http.StatusGatewayTimeout {
-		return true
-	}
-	if statusCode == http.StatusServiceUnavailable {
-		return true
-	}
-	return false
 }
 
 type smartResponse struct {
@@ -231,16 +212,9 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 		req.ContentLength = int64(buf.Len())
 	}
 	resp, err := httpClient.Do(req)
-
-	if err != nil {
-		log.Printf("Request failed with Error: %v", err)
-		if resp != nil && resp.Body != nil {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-		}
+	if resp == nil {
 		return nil, err
 	}
-
 	if resp.StatusCode == http.StatusOK {
 		sResponse := &smartResponse{
 			Response: *resp,
@@ -253,11 +227,16 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 		return sResponse, nil
 	}
 
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-
+	if resp.Body != nil {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+	sResponse := &smartResponse{
+		Response: *resp,
+		NodeIdx:  nodeIdx,
+	}
 	if resp.StatusCode != http.StatusTemporaryRedirect {
-		return nil, fmt.Errorf("query status %d", resp.StatusCode)
+		return sResponse, err
 	}
 
 	redirectCount--
@@ -278,7 +257,7 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 	for i := range s.candidates {
 		redirectNode := &s.candidates[i]
 		if redirectNode.NodeID == redirectNodeId {
-			log.Printf("### [Redirect] to node %d from %d, RedirectCount: %d", i, nodeIdx, redirectCount)
+			log.Printf("[requestHttp] Redirect to node %d from %d, RedirectCount: %d", i, nodeIdx, redirectCount)
 			return s.requestHttp(ctx, i, redirectNode.BaseURL, redirectNode.SecretKey, endpoint, method, headers, body, timoutSec, redirectCount)
 		}
 	}
@@ -310,7 +289,7 @@ func (s *switcher) selectNode(dbName string, endpoint endpointType) (nodeIdx int
 				nodeInfo, err := fetchNodeInfo(tarNode.BaseURL, tarNode.SecretKey)
 				tarNode.CheckTime = time.Now()
 				if err != nil {
-					log.Printf("Failed to fetch node info %s: %v", tarNode.BaseURL, err)
+					log.Printf("[selectNode] Failed to fetch node info %s: %v", tarNode.BaseURL, err)
 					tarNode.Status = "HEALZERR"
 					return
 				}
@@ -341,7 +320,7 @@ func (s *switcher) selectNode(dbName string, endpoint endpointType) (nodeIdx int
 			nodeInfo, err := fetchNodeInfo(tarNode.BaseURL, tarNode.SecretKey)
 			tarNode.CheckTime = time.Now()
 			if err != nil {
-				log.Printf("Failed to fetch node info %s: %v", tarNode.BaseURL, err)
+				log.Printf("[selectNode] Failed to fetch node info %s: %v", tarNode.BaseURL, err)
 				tarNode.Status = "HEALZERR"
 				return
 			}
@@ -442,7 +421,7 @@ func fetchNodeInfo(baseURL string, secretKey string) (*nodeInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Secret-Key", secretKey)
+	req.Header.Set(hEADER_SECRET_KEY, secretKey)
 	resp, err := httpClient.Do(req)
 
 	if err != nil {
