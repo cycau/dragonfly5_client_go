@@ -170,11 +170,11 @@ func (c *TxClient) Execute(ctx context.Context, sql string, params *Params) (*Ex
 	return &result, nil
 }
 
-func (c *TxClient) Commit() error {
+func (c *TxClient) Commit(ctx context.Context) error {
 	headers := map[string]string{
 		hEADER_TX_ID: c.orgTxId,
 	}
-	resp, err := c.executor.RequestTargetNode(context.Background(), c.nodeIdx, ep_TX_COMMIT, http.MethodPut, headers, nil, 0, 2)
+	resp, err := c.executor.RequestTargetNode(ctx, c.nodeIdx, ep_TX_COMMIT, http.MethodPut, headers, nil, 0, 2)
 	if err != nil {
 		return err
 	}
@@ -187,11 +187,11 @@ func (c *TxClient) Commit() error {
 	return nil
 }
 
-func (c *TxClient) Rollback() error {
+func (c *TxClient) Rollback(ctx context.Context) error {
 	headers := map[string]string{
 		hEADER_TX_ID: c.orgTxId,
 	}
-	resp, err := c.executor.RequestTargetNode(context.Background(), c.nodeIdx, ep_TX_ROLLBACK, http.MethodPut, headers, nil, 0, 2)
+	resp, err := c.executor.RequestTargetNode(ctx, c.nodeIdx, ep_TX_ROLLBACK, http.MethodPut, headers, nil, 0, 2)
 	if err != nil {
 		return err
 	}
@@ -204,11 +204,11 @@ func (c *TxClient) Rollback() error {
 	return nil
 }
 
-func (c *TxClient) Close() error {
+func (c *TxClient) Close(ctx context.Context) error {
 	headers := map[string]string{
 		hEADER_TX_ID: c.orgTxId,
 	}
-	resp, err := c.executor.RequestTargetNode(context.Background(), c.nodeIdx, ep_TX_CLOSE, http.MethodPut, headers, nil, 0, 3)
+	resp, err := c.executor.RequestTargetNode(ctx, c.nodeIdx, ep_TX_CLOSE, http.MethodPut, headers, nil, 0, 3)
 	if err != nil {
 		return err
 	}
