@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	gonanoid "github.com/matoous/go-nanoid/v2"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -145,11 +146,12 @@ func (s *switcher) Request(ctx context.Context, dbName string, endpoint endpoint
 
 	retryCount--
 	if retryCount < 0 {
-		return nil, fmt.Errorf("Failed to connect to service. Retry count exceeded. Last status: %d error: %v", resp.StatusCode, err)
+		return nil, fmt.Errorf("Failed to connect to service. Retry count exceeded. Last response: %+v, error: %v", resp, err)
 	}
 	time.Sleep(300 * time.Millisecond)
 
 	// retry
+	log.Printf("### Retry request to node %d, endpoint: %d, retryCount: %d, response: %+v, error: %v", nodeIdx, endpoint, retryCount, resp, err)
 	return s.Request(ctx, dbName, endpoint, method, headers, body, timoutSec, retryCount)
 }
 func (s *switcher) RequestTargetNode(ctx context.Context, nodeIdx int, endpoint endpointType, method string, headers map[string]string, body map[string]any, timoutSec int, retryCount int) (*smartResponse, error) {
@@ -176,10 +178,11 @@ func (s *switcher) RequestTargetNode(ctx context.Context, nodeIdx int, endpoint 
 	case 0:
 		time.Sleep(2500 * time.Millisecond)
 	case -1:
-		return nil, fmt.Errorf("Failed to connect to service. Retry count exceeded. Last status: %d error: %v", resp.StatusCode, err)
+		return nil, fmt.Errorf("Failed to connect to service. Retry count exceeded. Last response: %+v, error: %v", resp, err)
 	}
 
 	// retry
+	log.Printf("### Retry request to node %d, endpoint: %d, retryCount: %d, response: %+v, error: %v", nodeIdx, endpoint, retryCount, resp, err)
 	return s.RequestTargetNode(ctx, nodeIdx, endpoint, method, headers, body, timoutSec, retryCount)
 
 }
@@ -195,7 +198,13 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 	if err != nil {
 		return nil, err
 	}
+	requestId, ok := ctx.Value("X-Request-Id").(string)
+	if !ok {
+		requestId, err = gonanoid.New(9)
+		requestId = "d5" + requestId
+	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("X-Request-Id", requestId)
 	req.Header.Set(hEADER_SECRET_KEY, secretKey)
 	req.Header.Set(hEADER_REDIRECT_COUNT, strconv.Itoa(redirectCount))
 	req.Header.Set(hEADER_TIMEOUT_SEC, strconv.Itoa(timoutSec))
@@ -257,7 +266,7 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 	for i := range s.candidates {
 		redirectNode := &s.candidates[i]
 		if redirectNode.NodeID == redirectNodeId {
-			log.Printf("[requestHttp] Redirect to node %d from %d, RedirectCount: %d", i, nodeIdx, redirectCount)
+			log.Printf("### Redirect to node %d from %d, RedirectCount: %d", i, nodeIdx, redirectCount)
 			return s.requestHttp(ctx, i, redirectNode.BaseURL, redirectNode.SecretKey, endpoint, method, headers, body, timoutSec, redirectCount)
 		}
 	}
