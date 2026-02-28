@@ -198,13 +198,13 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 	if err != nil {
 		return nil, err
 	}
-	requestId, ok := ctx.Value("X-Request-Id").(string)
+	traceId, ok := ctx.Value(ctx_TRACE_ID).(string)
 	if !ok {
-		requestId, err = gonanoid.New(9)
-		requestId = "d5" + requestId
+		traceId, err = gonanoid.New(9)
+		traceId = "d5" + traceId
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("X-Request-Id", requestId)
+	req.Header.Set("X-Request-Id", traceId)
 	req.Header.Set(hEADER_SECRET_KEY, secretKey)
 	req.Header.Set(hEADER_REDIRECT_COUNT, strconv.Itoa(redirectCount))
 	req.Header.Set(hEADER_TIMEOUT_SEC, strconv.Itoa(timoutSec))

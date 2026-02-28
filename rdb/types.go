@@ -121,7 +121,10 @@ func (r *Records) Size() int {
 	return len(r.Rows)
 }
 
-func SetTraceId(ctx context.Context, requestId string) context.Context {
-	ctx = context.WithValue(ctx, "X-Request-Id", requestId)
-	return ctx
+const (
+	ctx_TRACE_ID = "$TraceId"
+)
+
+func SetTraceId(ctx context.Context, traceId string) context.Context {
+	return context.WithValue(ctx, ctx_TRACE_ID, traceId)
 }
