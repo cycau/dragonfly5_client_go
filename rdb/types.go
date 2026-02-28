@@ -15,6 +15,7 @@
 package rdbclient
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -118,4 +119,9 @@ func (r *Records) Get(rowIndex int) *Record {
 
 func (r *Records) Size() int {
 	return len(r.Rows)
+}
+
+func SetTraceId(ctx context.Context, requestId string) context.Context {
+	ctx = context.WithValue(ctx, "X-Request-Id", requestId)
+	return ctx
 }
