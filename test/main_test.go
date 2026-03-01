@@ -13,6 +13,6 @@ func TestRush(t *testing.T) {
 		log.Fatal("Configure error:", err)
 	}
 
-	MakeTestData(10000)
+	MakeTestData(1000000)
 	runRush(10000, 1000)
 }
