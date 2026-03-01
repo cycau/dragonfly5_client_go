@@ -112,7 +112,7 @@ type Records struct {
 
 func (r *Records) Get(rowIndex int) *Record {
 	if rowIndex < 0 || rowIndex >= len(r.Rows) {
-		panic(fmt.Sprintf("Row index %d out of range", rowIndex))
+		return nil
 	}
 	return &r.Rows[rowIndex]
 }
