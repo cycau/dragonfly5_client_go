@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"math/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -29,7 +30,7 @@ func runRush(count int, batchSize int) {
 
 			var err error
 			var result *rdbclient.Records
-			funcIdx := 0 //rand.Intn(4)
+			funcIdx := rand.Intn(4)
 			switch funcIdx {
 			case 0:
 				result, err = TestTxCase1()
