@@ -29,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -198,13 +197,11 @@ func (s *switcher) requestHttp(ctx context.Context, nodeIdx int, baseURL string,
 	if err != nil {
 		return nil, err
 	}
-	traceId, ok := ctx.Value(ctx_TRACE_ID).(string)
-	if !ok {
-		traceId, err = gonanoid.New(9)
-		traceId = "d5" + traceId
-	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("X-Request-Id", traceId)
+	traceId, ok := ctx.Value(ctx_TRACE_ID).(string)
+	if ok {
+		req.Header.Set("X-Request-Id", traceId)
+	}
 	req.Header.Set(hEADER_SECRET_KEY, secretKey)
 	req.Header.Set(hEADER_REDIRECT_COUNT, strconv.Itoa(redirectCount))
 	req.Header.Set(hEADER_TIMEOUT_SEC, strconv.Itoa(timoutSec))
